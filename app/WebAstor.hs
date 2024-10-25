@@ -19,7 +19,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Bool (not)
 import Data.Either (Either (Left, Right))
 import Data.Function (flip, ($), (.))
-import Data.Functor ((<$>))
+import Data.Functor (void, (<$>))
 import Data.Int (Int)
 import Data.List (sortOn)
 import Data.List.NonEmpty qualified as NE
@@ -36,15 +36,15 @@ import Lucid.Base (renderBS)
 import Lucid.Html5 (h1_)
 import Network.HTTP.Media qualified as M
 import Network.Wai.Handler.Warp (run)
-import Servant (Get, Proxy (Proxy), QueryParam, (:>))
-import Servant.API (Accept (..), JSON, MimeRender (..), Post, ReqBody)
+import Servant (Get, Handler, Proxy (Proxy), QueryParam, (:>))
+import Servant.API (Accept (..), JSON, MimeRender (..), Post, ReqBody, (:<|>) ((:<|>)))
 import Servant.API.Generic (Generic)
 import Servant.Server (Application, Server, serve)
 import System.Environment (getArgs)
 import System.IO (IO, putStrLn)
-import Tango.Client (AttributeName (AttributeName), TangoException (TangoException), parseTangoUrl, readStringSpectrumAttribute, tangoValueRead, withDeviceProxy)
+import Tango.Client (AttributeName (AttributeName), CommandData (CommandString), CommandName (CommandName), TangoException (TangoException), commandInOutGeneric, parseTangoUrl, readStringSpectrumAttribute, tangoValueRead, withDeviceProxy)
 import Text.Show (show)
-import Prelude ()
+import Prelude (undefined)
 
 data HTML deriving stock (Typeable)
 
@@ -65,19 +65,23 @@ data AstorServer = AstorServer
   }
   deriving (Generic)
 
+data Message = MessageError Text | MessageSuccess Text
+
 data RefreshOutput = RefreshOutput
   { refreshOutputServers :: Either Text [AstorServer],
-    refreshOutputHost :: Text
+    refreshOutputHost :: Text,
+    refreshOutputMessage :: Maybe Message
   }
   deriving (Generic)
 
 viewServerStatus :: (Monad m) => Text -> L.HtmlT m ()
 viewServerStatus "ON" = L.span_ [L.class_ "badge text-bg-success"] "ON"
+viewServerStatus "MOVING" = L.span_ [L.class_ "spinner-border spinner-border-sm text-secondary"] mempty
 viewServerStatus "FAULT" = L.span_ [L.class_ "badge text-bg-danger"] "FAULT"
 viewServerStatus t = L.span_ [L.class_ "badge text-bg-secondary"] (L.toHtml t)
 
 instance ToHtml RefreshOutput where
-  toHtml (RefreshOutput servers host) = viewHtmlSkeleton do
+  toHtml (RefreshOutput servers host message) = viewHtmlSkeleton do
     L.form_ [L.action_ "servers"] do
       L.div_ [L.class_ "form-floating mb-3"] do
         L.input_
@@ -90,10 +94,15 @@ instance ToHtml RefreshOutput where
           ]
         L.label_ [L.for_ "host"] "Tango Host:Port"
       L.button_ [L.class_ "btn btn-primary mb-3", L.type_ "submit"] "Refresh"
-    L.form_ [L.action_ "servers"] do
-      case servers of
-        Left e -> L.div_ [L.class_ "alert alert-danger"] (L.toHtml ("Something went wrong: " <> e))
-        Right serverList -> L.table_ [L.class_ "table"] do
+    case servers of
+      Left e ->
+        L.div_ [L.class_ "alert alert-danger"] (L.toHtml ("Something went wrong: " <> e))
+      Right serverList -> do
+        case message of
+          Just (MessageError e) -> L.div_ [L.class_ "alert alert-danger"] (L.toHtml ("Something went wrong: " <> e))
+          Just (MessageSuccess s) -> L.div_ [L.class_ "alert alert-success"] (L.toHtml s)
+          Nothing -> mempty
+        L.table_ [L.class_ "table"] do
           L.thead_ do
             L.tr_ do
               L.th_ "Lvl"
@@ -103,22 +112,33 @@ instance ToHtml RefreshOutput where
           L.tbody_
             ( forM_ (sortOn serverLevel serverList) \(AstorServer {serverDevice, serverStatus, serverLevel}) ->
                 L.tr_ do
-                  L.td_ (L.toHtml (pack (show (serverLevel))))
+                  L.td_ (L.toHtml (pack (show serverLevel)))
                   L.td_ (L.code_ (L.toHtml serverDevice))
                   L.td_ do
                     viewServerStatus serverStatus
                   L.td_ do
                     L.div_ [L.class_ "hstack gap-1"] do
-                      L.a_ [L.href_ ("stop?device=" <> serverDevice), L.class_ "btn btn-sm btn-primary rounded-circle"] do
-                        L.i_ [L.class_ "bi-stop"] mempty
-                      L.a_ [L.href_ ("start?device=" <> serverDevice), L.class_ "btn btn-sm btn-primary rounded-circle"] do
-                        L.i_ [L.class_ "bi-play"] mempty
-                      L.a_ [L.href_ ("restart?device=" <> serverDevice), L.class_ "btn btn-sm btn-primary rounded-circle"] do
-                        L.i_ [L.class_ "bi-arrow-clockwise"] mempty
+                      L.a_
+                        [ L.href_ ("servers?host=" <> host <> "&action=stop&device=" <> serverDevice),
+                          L.class_ "btn btn-sm btn-primary rounded-circle"
+                        ]
+                        do
+                          L.i_ [L.class_ "bi-stop"] mempty
+                      L.a_
+                        [ L.href_ ("servers?host=" <> host <> "&action=start&device=" <> serverDevice),
+                          L.class_ "btn btn-sm btn-primary rounded-circle"
+                        ]
+                        do
+                          L.i_ [L.class_ "bi-play"] mempty
             )
   toHtmlRaw = toHtml
 
-type AstorAPI = "servers" :> QueryParam "host" Text :> Get '[HTML] RefreshOutput
+type AstorAPI =
+  "servers"
+    :> QueryParam "host" Text
+    :> QueryParam "action" Text
+    :> QueryParam "device" Text
+    :> Get '[HTML] RefreshOutput
 
 parseServersOutput :: Text -> Either Text [AstorServer]
 parseServersOutput l = for (lines l) \line -> case words line of
@@ -142,23 +162,28 @@ parseHostWithPort hostAndPort =
           _ -> Nothing
 
 astorServer :: Server AstorAPI
-astorServer inputHost =
+astorServer = astorEndpointServers
+
+astorEndpointServers :: Maybe Text -> Maybe Text -> Maybe Text -> Handler RefreshOutput
+astorEndpointServers inputHost action devicename =
   case inputHost >>= parseHostWithPort of
     Nothing ->
       pure
         ( RefreshOutput
             { refreshOutputHost = "",
-              refreshOutputServers = Right []
+              refreshOutputServers = Right [],
+              refreshOutputMessage = Nothing
             }
         )
-    Just (HostWithPort inputHost' inputPort) ->
+    Just (HostWithPort inputHost' inputPort) -> do
       let inputHostAndPortStr = inputHost' <> ":" <> pack (show inputPort)
        in case parseTangoUrl ("tango://" <> inputHostAndPortStr <> "/tango/admin/" <> inputHost') of
             Left e ->
               pure
                 ( RefreshOutput
                     { refreshOutputHost = inputHostAndPortStr,
-                      refreshOutputServers = Left ("error parsing host: " <> e)
+                      refreshOutputServers = Left ("error parsing host: " <> e),
+                      refreshOutputMessage = Nothing
                     }
                 )
             Right deviceAddress -> liftIO
@@ -167,25 +192,37 @@ astorServer inputHost =
                     pure
                       ( RefreshOutput
                           { refreshOutputHost = inputHostAndPortStr,
-                            refreshOutputServers = Left ("error in tango: " <> pack (show e))
+                            refreshOutputServers = Left ("error in tango: " <> pack (show e)),
+                            refreshOutputMessage = Nothing
                           }
                       )
                 )
               $ withDeviceProxy deviceAddress \proxy -> do
+                outputMessage <- case (action, devicename) of
+                  (Just "stop", Just deviceName) -> do
+                    void (commandInOutGeneric proxy (CommandName "DevStop") (CommandString deviceName))
+                    pure (Just (MessageSuccess "stopping!"))
+                  (Just "start", Just deviceName) -> do
+                    void (commandInOutGeneric proxy (CommandName "DevStart") (CommandString deviceName))
+                    pure (Just (MessageSuccess "starting!"))
+                  _ -> pure Nothing
+
                 servers <- readStringSpectrumAttribute proxy (AttributeName "Servers")
                 case parseServersOutput (unlines (tangoValueRead servers)) of
                   Left e ->
                     pure
                       ( RefreshOutput
                           { refreshOutputHost = inputHostAndPortStr,
-                            refreshOutputServers = Left ("error parsing servers output: " <> e)
+                            refreshOutputServers = Left ("error parsing servers output: " <> e),
+                            refreshOutputMessage = outputMessage
                           }
                       )
                   Right serversParsed ->
                     pure
                       ( RefreshOutput
                           { refreshOutputHost = inputHostAndPortStr,
-                            refreshOutputServers = Right serversParsed
+                            refreshOutputServers = Right serversParsed,
+                            refreshOutputMessage = outputMessage
                           }
                       )
 
