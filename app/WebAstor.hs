@@ -14,7 +14,7 @@ module Main where
 
 import Control.Applicative (pure)
 import Control.Exception (handle)
-import Control.Monad (forM_, (>>=))
+import Control.Monad (Monad, forM_, (>>=))
 import Control.Monad.IO.Class (liftIO)
 import Data.Bool (not)
 import Data.Either (Either (Left, Right))
@@ -69,6 +69,11 @@ data RefreshOutput = RefreshOutput
   }
   deriving (Generic)
 
+viewServerStatus :: (Monad m) => Text -> L.HtmlT m ()
+viewServerStatus "ON" = L.span_ [L.class_ "badge text-bg-success"] "ON"
+viewServerStatus "FAULT" = L.span_ [L.class_ "badge text-bg-danger"] "FAULT"
+viewServerStatus t = L.span_ [L.class_ "badge text-bg-secondary"] (L.toHtml t)
+
 instance ToHtml RefreshOutput where
   toHtml (RefreshOutput servers host) = viewHtmlSkeleton do
     L.form_ [L.action_ "servers"] do
@@ -90,7 +95,8 @@ instance ToHtml RefreshOutput where
           ( forM_ serverList \(AstorServer {serverDevice, serverStatus}) ->
               L.tr_ do
                 L.td_ (L.code_ (L.toHtml serverDevice))
-                L.td_ (L.toHtml serverStatus)
+                L.td_ do
+                  viewServerStatus serverStatus
           )
   toHtmlRaw = toHtml
 
