@@ -11,12 +11,12 @@
 -- |
 -- Description : Low-level interface to all Tango functions
 module Tango.Raw.Common
-  ( HaskellTangoDevState (..),
-    HaskellDispLevel (..),
+  ( DeviceState (..),
+    DisplayLevel (..),
     HaskellTangoPropertyData (..),
     HaskellTangoDevEncoded (..),
     EventType (..),
-    HaskellAttrWriteType (..),
+    AttrWriteType (..),
     ErrSeverity (..),
     DatabaseProxyPtr,
     HaskellDataQuality (..),
@@ -25,7 +25,7 @@ module Tango.Raw.Common
     HaskellAttributeInfoList (..),
     HaskellAttributeDataList (..),
     HaskellAttributeInfo (..),
-    HaskellDataFormat (..),
+    DataFormat (..),
     HaskellTangoVarArray (..),
     Timeval (..),
     DeviceProxyPtr,
@@ -35,7 +35,7 @@ module Tango.Raw.Common
     TangoAttrMemorizedType (..),
     HaskellAttributeData (..),
     HaskellCommandData (..),
-    HaskellTangoDataType (..),
+    TangoDataType (..),
     HaskellTangoCommandData (..),
     HaskellCommandInfoList (..),
     HaskellCommandInfo (..),
@@ -140,24 +140,24 @@ pokeBounded desc ptr x =
     Just v -> poke @CInt (castPtr ptr) v
 
 -- | List of all states that Tango knows about for device servers
-data HaskellTangoDevState
-  = On
-  | Off
-  | Close
-  | Open
-  | Insert
-  | Extract
-  | Moving
-  | Standby
-  | Fault
-  | Init
-  | Running
-  | Alarm
-  | Disable
-  | Unknown
+data DeviceState
+  = StateOn
+  | StateOff
+  | StateClose
+  | StateOpen
+  | StateInsert
+  | StateExtract
+  | StateMoving
+  | StateStandby
+  | StateFault
+  | StateInit
+  | StateRunning
+  | StateAlarm
+  | StateDisable
+  | StateUnknown
   deriving (Show, Eq, Bounded, Enum)
 
-instance Storable HaskellTangoDevState where
+instance Storable DeviceState where
   sizeOf _ = (# size TangoDevState)
   alignment _ = (# alignment TangoDevState)
   peek = peekBounded "dev state"
@@ -214,7 +214,7 @@ data HaskellTangoCommandData
   | HaskellCommandDouble !CDouble
   | HaskellCommandCString !CString
   | HaskellCommandLong64 !CLong
-  | HaskellCommandDevState !HaskellTangoDevState
+  | HaskellCommandDevState !DeviceState
   | HaskellCommandULong64 !CULong
   | HaskellCommandDevEncoded !HaskellTangoDevEncoded
   | HaskellCommandDevEnum !CTangoEnum
@@ -229,7 +229,7 @@ data HaskellTangoCommandData
   | HaskellCommandVarFloat !(HaskellTangoVarArray CFloat)
   | HaskellCommandVarDouble !(HaskellTangoVarArray CDouble)
   | HaskellCommandVarCString !(HaskellTangoVarArray CString)
-  | HaskellCommandVarDevState !(HaskellTangoVarArray HaskellTangoDevState)
+  | HaskellCommandVarDevState !(HaskellTangoVarArray DeviceState)
   | HaskellCommandLongStringArray !HaskellVarLongStringArray
   | HaskellCommandDoubleStringArray !HaskellVarDoubleStringArray
   deriving (Show)
@@ -247,7 +247,7 @@ data HaskellTangoAttributeData
   | HaskellAttributeDataFloatArray !(HaskellTangoVarArray CFloat)
   | HaskellAttributeDataDoubleArray !(HaskellTangoVarArray CDouble)
   | HaskellAttributeDataStringArray !(HaskellTangoVarArray CString)
-  | HaskellAttributeDataStateArray !(HaskellTangoVarArray HaskellTangoDevState)
+  | HaskellAttributeDataStateArray !(HaskellTangoVarArray DeviceState)
   | HaskellAttributeDataEncodedArray !(HaskellTangoVarArray HaskellTangoDevEncoded)
   deriving (Show)
 
@@ -277,7 +277,7 @@ data HaskellTangoPropertyData
 
 -- | Haskell mapping for the C type TangoDataType
 -- Beware: this is encoded positionally!
-data HaskellTangoDataType
+data TangoDataType
   = HaskellDevVoid
   | HaskellDevBoolean
   | HaskellDevShort
@@ -314,7 +314,7 @@ data HaskellTangoDataType
   | HaskellDevVarEncodedArray
   deriving (Show, Eq, Ord, Bounded, Enum)
 
-instance Storable HaskellTangoDataType where
+instance Storable TangoDataType where
   sizeOf _ = (# size TangoDataType)
   alignment _ = (# alignment TangoDataType)
   peek = peekBounded "data type"
@@ -348,28 +348,28 @@ instance Storable EventType where
   peek = peekBounded "event type"
   poke = pokeBounded "event type"
 
-data HaskellDataFormat
-  = HaskellScalar
-  | HaskellSpectrum
-  | HaskellImage
+data DataFormat
+  = FormatScalar
+  | FormatSpectrum
+  | FormatImage
   deriving (Show)
 
-instance Storable HaskellDataFormat where
+instance Storable DataFormat where
   sizeOf _ = (# size AttrDataFormat)
   alignment _ = (# alignment AttrDataFormat)
   peek ptr = do
     value :: CInt <- peek (castPtr ptr)
     case value of
-      0 -> pure HaskellScalar
-      1 -> pure HaskellSpectrum
-      _ -> pure HaskellImage
+      0 -> pure FormatScalar
+      1 -> pure FormatSpectrum
+      _ -> pure FormatImage
   poke ptr x =
     poke @CInt
       (castPtr ptr)
       ( case x of
-          HaskellScalar -> 0
-          HaskellSpectrum -> 1
-          HaskellImage -> 2
+          FormatScalar -> 0
+          FormatSpectrum -> 1
+          FormatImage -> 2
       )
 
 data HaskellDataQuality
@@ -398,9 +398,9 @@ instance Storable Timeval where
     (# poke struct timeval, tv_sec) ptr tvSec'
     (# poke struct timeval, tv_usec) ptr tvUsec'
 
-data HaskellAttrWriteType = Read | ReadWithWrite | Write | ReadWrite deriving (Show)
+data AttrWriteType = Read | ReadWithWrite | Write | ReadWrite deriving (Show)
 
-instance Storable HaskellAttrWriteType where
+instance Storable AttrWriteType where
   sizeOf _ = (# size AttrWriteType)
   alignment _ = (# alignment AttrWriteType)
   peek ptr = do
@@ -420,9 +420,9 @@ instance Storable HaskellAttrWriteType where
           ReadWrite -> 3
       )
 
-data HaskellDispLevel = Operator | Expert deriving (Show, Eq)
+data DisplayLevel = Operator | Expert deriving (Show, Eq, Enum)
 
-instance Storable HaskellDispLevel where
+instance Storable DisplayLevel where
   sizeOf _ = (# size DispLevel)
   alignment _ = (# alignment DispLevel)
   peek ptr = do
@@ -489,9 +489,9 @@ instance GStorable HaskellTangoDevEncoded
 
 data HaskellAttributeInfo = HaskellAttributeInfo
   { attributeInfoName :: !CString,
-    attributeInfoWritable :: !HaskellAttrWriteType,
-    attributeInfoDataFormat :: !HaskellDataFormat,
-    attributeInfoDataType :: !HaskellTangoDataType,
+    attributeInfoWritable :: !AttrWriteType,
+    attributeInfoDataFormat :: !DataFormat,
+    attributeInfoDataType :: !TangoDataType,
     attributeInfoMaxDimX :: !Int32,
     attributeInfoMaxDimY :: !Int32,
     attributeInfoDescription :: !CString,
@@ -505,7 +505,7 @@ data HaskellAttributeInfo = HaskellAttributeInfo
     attributeInfoMinAlarm :: !CString,
     attributeInfoMaxAlarm :: !CString,
     attributeInfoWritableAttrName :: !CString,
-    attributeInfoDispLevel :: !HaskellDispLevel,
+    attributeInfoDispLevel :: !DisplayLevel,
     attributeInfoEnumLabels :: !(Ptr CString),
     attributeInfoEnumLabelsCount :: !Word16,
     attributeInfoRootAttrName :: !CString,
@@ -519,26 +519,26 @@ data HaskellDbDatum = HaskellDbDatum
   { dbDatumPropertyName :: !CString,
     dbDatumIsEmpty :: !Bool,
     dbDatumWrongDataType :: !Bool,
-    dbDatumDataType :: !HaskellTangoDataType,
+    dbDatumDataType :: !TangoDataType,
     dbDatumPropData :: !HaskellTangoPropertyData
   }
   deriving (Show)
 
 data HaskellAttributeData = HaskellAttributeData
-  { dataFormat :: !HaskellDataFormat,
+  { dataFormat :: !DataFormat,
     dataQuality :: !HaskellDataQuality,
     nbRead :: !CLong,
     name :: !CString,
     dimX :: !Int32,
     dimY :: !Int32,
     timeStamp :: !Timeval,
-    dataType :: !HaskellTangoDataType,
+    dataType :: !TangoDataType,
     tangoAttributeData :: !HaskellTangoAttributeData
   }
   deriving (Show)
 
 data HaskellCommandData = HaskellCommandData
-  { argType :: !HaskellTangoDataType,
+  { argType :: !TangoDataType,
     tangoCommandData :: !HaskellTangoCommandData
   }
   deriving (Show)
