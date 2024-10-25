@@ -95,7 +95,7 @@ main =
 
 Under =benchmark= in the =.cabal= file, you will find =web-astor=, which is a web-based implementation of the Astor starter overlay. It runs on =localhost:8081= and displays a HTML version of Astor, asking for a Tango host. The code is short and should be fairly easy to grasp. A screenshot of that should explain it well:
 
-[[https://raw.githubusercontent.com/pmiddend/hs-tango/1-add-a-web-version-of-astor-as-a-small-example/doc-assets/web-astor.png]]
+[[https://raw.githubusercontent.com/pmiddend/hs-tango/main/doc-assets/web-astor.png]]
 
 The example uses Servant and Lucid to render the HTML.
 ** What's missing
