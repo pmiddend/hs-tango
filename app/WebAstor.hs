@@ -21,8 +21,10 @@ import Data.Either (Either (Left, Right))
 import Data.Function (flip, ($), (.))
 import Data.Functor ((<$>))
 import Data.Int (Int)
+import Data.List (sortOn)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (Maybe (Just, Nothing), fromMaybe)
+import Data.Monoid (mempty)
 import Data.Semigroup ((<>))
 import Data.Text (Text, breakOn, breakOnAll, drop, isPrefixOf, lines, pack, strip, unlines, words)
 import Data.Text.Read (decimal)
@@ -88,16 +90,32 @@ instance ToHtml RefreshOutput where
           ]
         L.label_ [L.for_ "host"] "Tango Host:Port"
       L.button_ [L.class_ "btn btn-primary mb-3", L.type_ "submit"] "Refresh"
-    case servers of
-      Left e -> L.div_ [L.class_ "alert alert-danger"] (L.toHtml ("Something went wrong: " <> e))
-      Right serverList -> L.table_ [L.class_ "table"] do
-        L.tbody_
-          ( forM_ serverList \(AstorServer {serverDevice, serverStatus}) ->
-              L.tr_ do
-                L.td_ (L.code_ (L.toHtml serverDevice))
-                L.td_ do
-                  viewServerStatus serverStatus
-          )
+    L.form_ [L.action_ "servers"] do
+      case servers of
+        Left e -> L.div_ [L.class_ "alert alert-danger"] (L.toHtml ("Something went wrong: " <> e))
+        Right serverList -> L.table_ [L.class_ "table"] do
+          L.thead_ do
+            L.tr_ do
+              L.th_ "Lvl"
+              L.th_ "Device"
+              L.th_ "Status"
+              L.th_ "Actions"
+          L.tbody_
+            ( forM_ (sortOn serverLevel serverList) \(AstorServer {serverDevice, serverStatus, serverLevel}) ->
+                L.tr_ do
+                  L.td_ (L.toHtml (pack (show (serverLevel))))
+                  L.td_ (L.code_ (L.toHtml serverDevice))
+                  L.td_ do
+                    viewServerStatus serverStatus
+                  L.td_ do
+                    L.div_ [L.class_ "hstack gap-1"] do
+                      L.a_ [L.href_ ("stop?device=" <> serverDevice), L.class_ "btn btn-sm btn-primary rounded-circle"] do
+                        L.i_ [L.class_ "bi-stop"] mempty
+                      L.a_ [L.href_ ("start?device=" <> serverDevice), L.class_ "btn btn-sm btn-primary rounded-circle"] do
+                        L.i_ [L.class_ "bi-play"] mempty
+                      L.a_ [L.href_ ("restart?device=" <> serverDevice), L.class_ "btn btn-sm btn-primary rounded-circle"] do
+                        L.i_ [L.class_ "bi-arrow-clockwise"] mempty
+            )
   toHtmlRaw = toHtml
 
 type AstorAPI = "servers" :> QueryParam "host" Text :> Get '[HTML] RefreshOutput
