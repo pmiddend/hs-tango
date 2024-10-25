@@ -65,7 +65,8 @@ library
     -- otherwise: undefined reference to operator new
     extra-libraries: stdc++
 
-executable web-astor
+benchmark web-astor
+  type: exitcode-stdio-1.0
   main-is: WebAstor.hs
   hs-source-dirs: app
   build-depends:

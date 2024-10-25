@@ -46,6 +46,7 @@ import Tango.Client (AttributeName (AttributeName), CommandData (CommandString),
 import Text.Show (show)
 import Prelude (undefined)
 
+-- | HTML type which uses lucid2 to output the bytes. lucid1 would have been simpler, but lucid2 is cleaner.
 data HTML deriving stock (Typeable)
 
 instance Accept HTML where
@@ -56,6 +57,7 @@ instance Accept HTML where
 instance (ToHtml a) => MimeRender HTML a where
   mimeRender _ = renderBS . toHtml
 
+-- | A Tango device server description that is parsed from the Astor server output
 data AstorServer = AstorServer
   { serverDevice :: Text,
     serverStatus :: Text,
@@ -65,8 +67,10 @@ data AstorServer = AstorServer
   }
   deriving (Generic)
 
+-- | Message to display after an action (start server, stop server)
 data Message = MessageError Text | MessageSuccess Text
 
+-- | Main type holding information about what to output
 data RefreshOutput = RefreshOutput
   { refreshOutputServers :: Either Text [AstorServer],
     refreshOutputHost :: Text,
@@ -251,10 +255,5 @@ viewHtmlSkeleton content = do
 
 main :: IO ()
 main = do
-  args <- getArgs
-  case args of
-    ["--generate-openapi"] -> do
-      pure ()
-    _ -> do
-      putStrLn "listening on port 8081..."
-      run 8081 app
+  putStrLn "listening on port 8081..."
+  run 8081 app
