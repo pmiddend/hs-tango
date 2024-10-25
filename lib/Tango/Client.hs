@@ -100,7 +100,7 @@ module Tango.Client
 
     -- * Attributes
     AttributeName (AttributeName),
-    AttributeInfo (AttributeInfo),
+    AttributeInfo (..),
     getConfigsForAttributes,
     getConfigForAttribute,
     TangoValue (TangoValue, tangoValueRead, tangoValueWrite),
