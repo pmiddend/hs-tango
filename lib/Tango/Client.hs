@@ -222,7 +222,7 @@ module Tango.Client
     getDeviceProperties,
     putDeviceProperties,
     deleteDeviceProperties,
-    HaskellTangoDevState (Alarm, Close, Disable, Extract, Fault, Init, Insert, Moving, Off, On, Open, Running, Standby, Unknown),
+    DeviceState (..),
 
     -- * Events
     subscribeEvent,
@@ -261,7 +261,7 @@ import Control.Monad (void, when, (>>=))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (Bool (False, True), otherwise, (||))
 import Data.Either (Either (Left, Right))
-import Data.Eq (Eq, (/=))
+import Data.Eq ((/=))
 import Data.Foldable (any)
 import Data.Function (const, id, ($), (.))
 import Data.Functor (Functor, (<$>))
@@ -279,21 +279,22 @@ import Foreign.C.Types (CInt)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (IO)
 import Tango.Raw.Common
-  ( DatabaseProxyPtr,
+  ( AttrWriteType,
+    DataFormat (FormatImage, FormatScalar, FormatSpectrum),
+    DatabaseProxyPtr,
     DevFailed (DevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     DeviceProxyPtr,
+    DeviceState (StateAlarm, StateClose, StateDisable, StateExtract, StateFault, StateInit, StateInsert, StateMoving, StateOff, StateOn, StateOpen, StateRunning, StateStandby, StateUnknown),
+    DisplayLevel,
     EventType,
-    HaskellAttrWriteType,
     HaskellAttributeData (HaskellAttributeData, dataFormat, dataQuality, dataType, dimX, dimY, name, nbRead, tangoAttributeData, timeStamp),
     HaskellAttributeInfoList (HaskellAttributeInfoList, attributeInfoListLength, attributeInfoListSequence),
     HaskellCommandData (HaskellCommandData, tangoCommandData),
     HaskellCommandInfo (HaskellCommandInfo, cmdDisplayLevel, cmdInType, cmdInTypeDesc, cmdName, cmdOutType, cmdOutTypeDesc, cmdTag),
     HaskellCommandInfoList (HaskellCommandInfoList, commandInfoLength, commandInfoSequence),
-    HaskellDataFormat (HaskellImage, HaskellScalar, HaskellSpectrum),
     HaskellDataQuality (HaskellValid),
     HaskellDbData (HaskellDbData, dbDataLength, dbDataSequence),
     HaskellDbDatum (HaskellDbDatum, dbDatumIsEmpty, dbDatumPropData, dbDatumPropertyName, dbDatumWrongDataType),
-    HaskellDispLevel,
     HaskellErrorStack (errorStackLength, errorStackSequence),
     HaskellTangoAttributeData
       ( HaskellAttributeDataBoolArray,
@@ -309,11 +310,10 @@ import Tango.Raw.Common
         HaskellAttributeDataUShortArray
       ),
     HaskellTangoCommandData (HaskellCommandBool, HaskellCommandCString, HaskellCommandDevEnum, HaskellCommandDevState, HaskellCommandDouble, HaskellCommandFloat, HaskellCommandInt32, HaskellCommandLong64, HaskellCommandShort, HaskellCommandULong64, HaskellCommandUShort, HaskellCommandVarBool, HaskellCommandVarCString, HaskellCommandVarDevState, HaskellCommandVarDouble, HaskellCommandVarFloat, HaskellCommandVarLong, HaskellCommandVarLong64, HaskellCommandVarShort, HaskellCommandVarULong, HaskellCommandVarULong64, HaskellCommandVarUShort, HaskellCommandVoid),
-    HaskellTangoDataType (HaskellDevBoolean, HaskellDevDouble, HaskellDevEnum, HaskellDevFloat, HaskellDevInt, HaskellDevLong, HaskellDevLong64, HaskellDevShort, HaskellDevState, HaskellDevString, HaskellDevULong, HaskellDevULong64, HaskellDevUShort, HaskellDevVarBooleanArray, HaskellDevVarDoubleArray, HaskellDevVarFloatArray, HaskellDevVarLong64Array, HaskellDevVarLongArray, HaskellDevVarShortArray, HaskellDevVarStateArray, HaskellDevVarStringArray, HaskellDevVarULong64Array, HaskellDevVarULongArray, HaskellDevVarUShortArray, HaskellDevVoid),
-    HaskellTangoDevState (Alarm, Close, Disable, Extract, Fault, Init, Insert, Moving, Off, On, Open, Running, Standby, Unknown),
     HaskellTangoPropertyData (HaskellPropStringArray),
     HaskellTangoVarArray (HaskellTangoVarArray, varArrayLength, varArrayValues),
     TangoAttrMemorizedType (Memorized, MemorizedWriteInit, None, NotKnown),
+    TangoDataType (HaskellDevBoolean, HaskellDevDouble, HaskellDevEnum, HaskellDevFloat, HaskellDevInt, HaskellDevLong, HaskellDevLong64, HaskellDevShort, HaskellDevState, HaskellDevString, HaskellDevULong, HaskellDevULong64, HaskellDevUShort, HaskellDevVarBooleanArray, HaskellDevVarDoubleArray, HaskellDevVarFloatArray, HaskellDevVarLong64Array, HaskellDevVarLongArray, HaskellDevVarShortArray, HaskellDevVarStateArray, HaskellDevVarStringArray, HaskellDevVarULong64Array, HaskellDevVarULongArray, HaskellDevVarUShortArray, HaskellDevVoid),
     Timeval (Timeval),
     createEventCallbackWrapper,
     tango_command_inout,
@@ -357,7 +357,7 @@ import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
 import UnliftIO (MonadUnliftIO, bracket, finally, withRunInIO)
 import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, alloca, free, new, newArray, newCString, peek, peekArray, peekCString, with, withArray, withCString)
-import Prelude (Bounded, Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, error, fromIntegral, realToFrac)
+import Prelude (Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, error, fromIntegral, realToFrac)
 
 -- | This wraps the Tango exception trace in Haskell
 newtype TangoException = TangoException [DevFailed Text] deriving (Show)
@@ -449,7 +449,7 @@ writeScalarAttribute ::
   DeviceProxy ->
   AttributeName ->
   tangoType ->
-  HaskellTangoDataType ->
+  TangoDataType ->
   (HaskellTangoVarArray tangoType -> HaskellTangoAttributeData) ->
   m ()
 writeScalarAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newValue tangoType intract = do
@@ -457,7 +457,7 @@ writeScalarAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newVal
     with newValue $ \newValuePtr ->
       with
         ( HaskellAttributeData
-            { dataFormat = HaskellScalar,
+            { dataFormat = FormatScalar,
               dataQuality = HaskellValid,
               nbRead = 0,
               name = attributeNamePtr,
@@ -475,7 +475,7 @@ writeSpectrumAttribute ::
   DeviceProxy ->
   AttributeName ->
   [tangoType] ->
-  HaskellTangoDataType ->
+  TangoDataType ->
   (HaskellTangoVarArray tangoType -> HaskellTangoAttributeData) ->
   m ()
 writeSpectrumAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newValues tangoType intract =
@@ -483,7 +483,7 @@ writeSpectrumAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newV
     withArray newValues \newValuesPtr ->
       with
         ( HaskellAttributeData
-            { dataFormat = HaskellSpectrum,
+            { dataFormat = FormatSpectrum,
               dataQuality = HaskellValid,
               nbRead = 0,
               name = attributeNamePtr,
@@ -501,7 +501,7 @@ writeImageAttribute ::
   DeviceProxy ->
   AttributeName ->
   Image tangoType ->
-  HaskellTangoDataType ->
+  TangoDataType ->
   (HaskellTangoVarArray tangoType -> HaskellTangoAttributeData) ->
   m ()
 writeImageAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newImage tangoType intract =
@@ -509,7 +509,7 @@ writeImageAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newImag
     withArray (imageContent newImage) \newValuesPtr ->
       with
         ( HaskellAttributeData
-            { dataFormat = HaskellImage,
+            { dataFormat = FormatImage,
               dataQuality = HaskellValid,
               nbRead = 0,
               name = attributeNamePtr,
@@ -733,17 +733,17 @@ writeDoubleImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (realToFrac <$> newImage) HaskellDevDouble HaskellAttributeDataDoubleArray
 
 -- | Write a state scalar attribute
-writeStateAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> HaskellTangoDevState -> m ()
+writeStateAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> DeviceState -> m ()
 writeStateAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName newValue HaskellDevState HaskellAttributeDataStateArray
 
 -- | Write a state spectrum attribute
-writeStateSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [HaskellTangoDevState] -> m ()
+writeStateSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [DeviceState] -> m ()
 writeStateSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName newValues HaskellDevState HaskellAttributeDataStateArray
 
 -- | Write a state image attribute
-writeStateImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image HaskellTangoDevState -> m ()
+writeStateImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image DeviceState -> m ()
 writeStateImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName newImage HaskellDevState HaskellAttributeDataStateArray
 
@@ -770,7 +770,7 @@ writeStringAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newVal
       with newValuePtr \newValuePtrPtr ->
         with
           ( HaskellAttributeData
-              { dataFormat = HaskellScalar,
+              { dataFormat = FormatScalar,
                 dataQuality = HaskellValid,
                 nbRead = 0,
                 name = attributeNameC,
@@ -791,7 +791,7 @@ writeStringSpectrumAttribute (DeviceProxy proxyPtr) (AttributeName attributeName
       withArray stringPointerList \stringPointerPtr ->
         with
           ( HaskellAttributeData
-              { dataFormat = HaskellSpectrum,
+              { dataFormat = FormatSpectrum,
                 dataQuality = HaskellValid,
                 nbRead = 0,
                 name = attributeNameC,
@@ -812,7 +812,7 @@ writeStringImageAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) (
       withArray stringPointerList \stringPointerPtr ->
         with
           ( HaskellAttributeData
-              { dataFormat = HaskellSpectrum,
+              { dataFormat = FormatSpectrum,
                 dataQuality = HaskellValid,
                 nbRead = 0,
                 name = attributeNameC,
@@ -1175,20 +1175,20 @@ readDoubleSpectrumAttribute = readAttributeSimple extractDouble (convertGenericS
 readDoubleImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Double))
 readDoubleImageAttribute = readAttributeSimple extractDouble (convertGenericImage realToFrac)
 
-extractState :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray HaskellTangoDevState)
+extractState :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray DeviceState)
 extractState (HaskellAttributeDataStateArray a) = Just a
 extractState _ = Nothing
 
 -- | Read a state-type scalar attribute, fail hard if it's not really a state
-readStateAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue HaskellTangoDevState)
+readStateAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue DeviceState)
 readStateAttribute = readAttributeSimple extractState (convertGenericScalar id)
 
 -- | Read a state-type spectrum (list) attribute, fail hard if it's not really a state type
-readStateSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [HaskellTangoDevState])
+readStateSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [DeviceState])
 readStateSpectrumAttribute = readAttributeSimple extractState (convertGenericSpectrum id)
 
 -- | Read a state-type image attribute, fail hard if it's not really a state
-readStateImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image HaskellTangoDevState))
+readStateImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image DeviceState))
 readStateImageAttribute = readAttributeSimple extractState (convertGenericImage id)
 
 extractEnum :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CShort)
@@ -1225,7 +1225,7 @@ data CommandData
   | CommandFloat !Float
   | CommandDouble !Double
   | CommandString !Text
-  | CommandState !HaskellTangoDevState
+  | CommandState !DeviceState
   | CommandEnum !Int16
   | CommandListBool ![Bool]
   | CommandListShort ![Int16]
@@ -1237,7 +1237,7 @@ data CommandData
   | CommandListFloat ![Float]
   | CommandListDouble ![Double]
   | CommandListString ![Text]
-  | CommandListState ![HaskellTangoDevState]
+  | CommandListState ![DeviceState]
   deriving (Show)
 
 -- | Execute command with no input and no output
@@ -1410,9 +1410,9 @@ commandInEnumOutEnum proxy commandName in' = do
 
 -- | Information for a single attribute (for spectrum and images as well, see the dimensions)
 data AttributeInfo = AttributeInfo
-  { attributeInfoWritable :: !HaskellAttrWriteType,
-    attributeInfoDataFormat :: !HaskellDataFormat,
-    attributeInfoDataType :: !HaskellTangoDataType,
+  { attributeInfoWritable :: !AttrWriteType,
+    attributeInfoDataFormat :: !DataFormat,
+    attributeInfoDataType :: !TangoDataType,
     attributeInfoMaxDimX :: !Int,
     attributeInfoMaxDimY :: !Int,
     attributeInfoDescription :: !Text,
@@ -1426,7 +1426,7 @@ data AttributeInfo = AttributeInfo
     attributeInfoMinAlarm :: !Text,
     attributeInfoMaxAlarm :: !Text,
     attributeInfoWritableAttrName :: !Text,
-    attributeInfoDispLevel :: !HaskellDispLevel,
+    attributeInfoDispLevel :: !DisplayLevel,
     attributeInfoEnumLabels :: [Text],
     -- | Root attribute name (in case of forwarded attribute)
     attributeInfoRootAttrName :: Text,
@@ -1643,15 +1643,12 @@ pollAttribute (DeviceProxy proxy) (AttributeName attributeName) (Milliseconds ms
 stopPollAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m ()
 stopPollAttribute (DeviceProxy proxy) (AttributeName attributeName) = liftIO $ withCStringText attributeName (checkResult . tango_stop_poll_attribute proxy)
 
--- | Where to display this command (in Jive, for example)
-data DisplayLevel = Operator | Expert deriving (Show, Enum, Bounded, Eq)
-
 -- | All information Tango has on a command
 data CommandInfo = CommandInfo
   { commandInfoName :: !Text,
     commandInfoTag :: !Int,
-    commandInfoInType :: !HaskellTangoDataType,
-    commandInfoOutType :: !HaskellTangoDataType,
+    commandInfoInType :: !TangoDataType,
+    commandInfoOutType :: !TangoDataType,
     commandInfoInTypeDesc :: !Text,
     commandInfoOutTypeDesc :: !Text,
     commandInfoDisplayLevel :: !DisplayLevel
