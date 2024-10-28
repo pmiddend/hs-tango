@@ -43,14 +43,22 @@
 --
 -- = Examples
 --
+-- The examples below are alightly more explicit than needed (explicit imports), to make it easier to follow.
+--
 -- == Reading and writing a scalar, boolean attribute
 --
--- >{-# LANGUAGE BlockArguments #-}
+-- >
 -- >{-# LANGUAGE OverloadedStrings #-}
 -- >
 -- >module Main where
 -- >
--- >import Tango.Client
+-- >import Data.Either (Either (Left, Right))
+-- >import Data.Function (($))
+-- >import Data.Semigroup ((<>))
+-- >import System.IO (putStrLn)
+-- >import Tango.Client (AttributeName (AttributeName), parseTangoUrl, readBoolAttribute, tangoValueRead, withDeviceProxy)
+-- >import Text.Show (show)
+-- >import Prelude (error)
 -- >
 -- >main =
 -- >  case parseTangoUrl "sys/tg_test/1" of
@@ -58,25 +66,29 @@
 -- >    Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do
 -- >      booleanResult <- readBoolAttribute proxy (AttributeName "boolean_scalar")
 -- >      putStrLn $ "boolean_scalar is " <> show (tangoValueRead booleanResult)
--- >
--- >      writeBoolAttribute proxy (AttributeName "boolean_scalar") True
 --
--- == Reading a spectrum string attribute
+-- == Reading a spectrum boolean attribute
 --
 -- >{-# LANGUAGE BlockArguments #-}
 -- >{-# LANGUAGE OverloadedStrings #-}
 -- >
 -- >module Main where
 -- >
--- >import Tango.Client
+-- >import Control.Monad (mapM_)
+-- >import Data.Either (Either (Left, Right))
+-- >import Data.Function ((.))
+-- >import Data.Text (pack)
 -- >import qualified Data.Text.IO as TIO
+-- >import Tango.Client (AttributeName (AttributeName), TangoValue (tangoValueRead), parseTangoUrl, readBoolSpectrumAttribute, withDeviceProxy)
+-- >import Text.Show (show)
+-- >import Prelude (error)
 -- >
 -- >main =
 -- >  case parseTangoUrl "sys/tg_test/1" of
 -- >    Left e -> error "couldn't resolve tango URL"
 -- >    Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do
--- >      result <- readBoolSpectrumAttribute proxy (AttributeName "string_spectrum_ro")
--- >      mapM_ TIO.putStrLn result
+-- >      result <- readBoolSpectrumAttribute proxy (AttributeName "boolean_spectrum_ro")
+-- >      mapM_ (TIO.putStrLn . pack . show) (tangoValueRead result)
 module Tango.Client
   ( -- * Basics and initialization
 
