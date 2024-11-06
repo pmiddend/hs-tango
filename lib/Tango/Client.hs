@@ -273,14 +273,14 @@ import Control.Monad (void, when, (>>=))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (Bool (False, True), otherwise, (||))
 import Data.Either (Either (Left, Right))
-import Data.Eq ((/=))
+import Data.Eq (Eq, (/=))
 import Data.Foldable (any)
 import Data.Function (const, id, ($), (.))
 import Data.Functor (Functor, (<$>))
 import Data.Int (Int, Int16, Int32, Int64)
 import Data.List (drop, head, length, splitAt)
 import Data.Maybe (Maybe (Just, Nothing))
-import Data.Ord ((>))
+import Data.Ord (Ord, (>))
 import Data.Semigroup ((<>))
 import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, unpack)
 import Data.Traversable (traverse)
@@ -400,7 +400,7 @@ checkResult action = do
     throw (TangoException formattedStackItems)
 
 -- | Newtype wrapper around a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@. Retrieve via 'parseTangoUrl'
-newtype TangoUrl = TangoUrl Text
+newtype TangoUrl = TangoUrl Text deriving (Show, Eq, Ord)
 
 -- | Try to parse a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@ (the left side of the @Either@ will be an error message)
 parseTangoUrl :: Text -> Either Text TangoUrl
