@@ -69,6 +69,7 @@ benchmark web-astor
   type: exitcode-stdio-1.0
   main-is: WebAstor.hs
   hs-source-dirs: app
+  default-language:  Haskell2010
   build-depends:
       base >=4.7 && <5
     , hs-tango
@@ -84,6 +85,7 @@ benchmark tango-read-test-device
   main-is: ReadTestDevice.hs
   
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  default-language:  Haskell2010
   hs-source-dirs: app
   build-depends:
       base >=4.7 && <5
