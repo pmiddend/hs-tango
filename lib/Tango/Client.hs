@@ -978,6 +978,21 @@ extractIntegral :: (Integral i, MonadUnliftIO m) => HaskellTangoAttributeData ->
 extractIntegral (HaskellAttributeDataLongArray a) = do
   arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
   pure $ Just (fromIntegral <$> arrayElements)
+extractIntegral (HaskellAttributeDataShortArray a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (fromIntegral <$> arrayElements)
+extractIntegral (HaskellAttributeDataUShortArray a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (fromIntegral <$> arrayElements)
+extractIntegral (HaskellAttributeDataULongArray a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (fromIntegral <$> arrayElements)
+extractIntegral (HaskellAttributeDataLong64Array a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (fromIntegral <$> arrayElements)
+extractIntegral (HaskellAttributeDataULong64Array a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (fromIntegral <$> arrayElements)
 extractIntegral _ = pure Nothing
 
 -- | Read a spectrum attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally.
