@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -278,7 +279,8 @@ import Data.Foldable (any)
 import Data.Function (const, id, ($), (.))
 import Data.Functor (Functor, (<$>))
 import Data.Int (Int, Int16, Int32, Int64)
-import Data.List (drop, head, length, splitAt)
+import Data.List (drop, head, length)
+import Data.List.NonEmpty qualified as NE
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Ord (Ord, (>))
 import Data.Semigroup ((<>))
@@ -365,7 +367,7 @@ import Tango.Raw.Common
     tango_unsubscribe_event,
     tango_write_attribute,
   )
-import qualified Tango.Raw.Common as RawCommon
+import Tango.Raw.Common qualified as RawCommon
 import Text.Show (Show, show)
 import UnliftIO (MonadUnliftIO, bracket, finally, withRunInIO)
 import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, alloca, free, new, newArray, newCString, peek, peekArray, peekCString, with, withArray, withCString)
@@ -883,78 +885,77 @@ readAttributeGeneral extractValue (DeviceProxy proxyPtr) (AttributeName attribut
         Just v ->
           pure v
 
-data AtLeastTwo a = AtLeastTwo a a [a]
-
 -- | Call 'withExtractedAttributeValue' to read an attribute's value (safely), extract the array within, and call a function that makes the parsed contents into something more useful.
 readAttributeSimple ::
   (Storable a, Show a, MonadUnliftIO m) =>
   -- | Extract a specific type of data array (usually extracting a single data type like bool, long, ...)
   (HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray a)) ->
   -- | After taking at least two elements from the array given by the previous function, call this function and turn the whole thing into something useful
-  (HaskellAttributeData -> AtLeastTwo a -> m b) ->
+  (HaskellAttributeData -> NE.NonEmpty a -> m b) ->
   DeviceProxy ->
   AttributeName ->
   m b
 readAttributeSimple extractValue convertValue proxy attributeName = withExtractedAttributeValue (\d -> pure ((d,) <$> extractValue (tangoAttributeData d))) proxy attributeName \(attributeData, tangoArray) -> do
   arrayElements <- peekArray (fromIntegral (varArrayLength tangoArray)) (varArrayValues tangoArray)
   case arrayElements of
-    (first : second : rest) -> convertValue attributeData (AtLeastTwo first second rest)
-    _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a value array of length at least two, but got " <> show arrayElements
+    (first : rest) -> convertValue attributeData (first NE.:| rest)
+    _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a non-empty value array, but got " <> show arrayElements
 
 readAttributeSimple' ::
   (MonadIO m, Show a) =>
   (HaskellTangoAttributeData -> IO (Maybe [a])) ->
-  (HaskellAttributeData -> AtLeastTwo a -> m b) ->
+  (HaskellAttributeData -> NE.NonEmpty a -> m b) ->
   DeviceProxy ->
   AttributeName ->
   m b
 readAttributeSimple' extractValue convertValue proxy attributeName = do
   (attributeData, tangoArray) <- readAttributeGeneral (\d -> ((d,) <$>) <$> extractValue (tangoAttributeData d)) proxy attributeName
   case tangoArray of
-    (first : second : rest) -> convertValue attributeData (AtLeastTwo first second rest)
-    _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a value array of length at least two, but got " <> show tangoArray
+    (first : rest) -> convertValue attributeData (first NE.:| rest)
+    _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a non-empty value array, but got " <> show tangoArray
 
-convertGenericScalar :: (Applicative f) => (a -> b) -> HaskellAttributeData -> AtLeastTwo a -> f (TangoValue b)
-convertGenericScalar f _ (AtLeastTwo first second _) = pure (TangoValue (f first) (f second))
+convertGenericScalar :: (Applicative f) => (a -> b) -> HaskellAttributeData -> NE.NonEmpty a -> f (TangoValue b)
+convertGenericScalar f _ (first NE.:| []) = pure (TangoValue (f first) Nothing)
+convertGenericScalar f _ (first NE.:| (second : _)) = pure (TangoValue (f first) (Just (f second)))
 
-convertGenericSpectrum :: (Applicative f) => (a -> b) -> HaskellAttributeData -> AtLeastTwo a -> f (TangoValue [b])
-convertGenericSpectrum f (HaskellAttributeData {dimX}) (AtLeastTwo first second remainder) =
-  let wholeList = f <$> (first : second : remainder)
-      (readValue, writeValue) = splitAt (fromIntegral dimX) wholeList
-   in pure (TangoValue readValue writeValue)
+convertGenericSpectrum :: (Applicative f) => (a -> b) -> HaskellAttributeData -> NE.NonEmpty a -> f (TangoValue [b])
+convertGenericSpectrum f (HaskellAttributeData {dimX}) data' =
+  let wholeList = f <$> data'
+      (readValue, writeValue) = NE.splitAt (fromIntegral dimX) wholeList
+   in pure (TangoValue readValue (Just writeValue))
 
-convertGenericSpectrum' :: (Applicative f) => HaskellAttributeData -> AtLeastTwo a -> f (TangoValue [a])
-convertGenericSpectrum' (HaskellAttributeData {dimX}) (AtLeastTwo first second remainder) =
-  let wholeList = first : second : remainder
-      (readValue, writeValue) = splitAt (fromIntegral dimX) wholeList
-   in pure (TangoValue readValue writeValue)
+convertGenericSpectrum' :: (Applicative f) => HaskellAttributeData -> NE.NonEmpty a -> f (TangoValue [a])
+convertGenericSpectrum' (HaskellAttributeData {dimX}) data' =
+  let wholeList = data'
+      (readValue, writeValue) = NE.splitAt (fromIntegral dimX) wholeList
+   in pure (TangoValue readValue (Just writeValue))
 
-convertGenericImage :: (Applicative f) => (a1 -> a2) -> HaskellAttributeData -> AtLeastTwo a1 -> f (TangoValue (Image a2))
-convertGenericImage f (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first second remainder) =
-  let wholeList = f <$> (first : second : remainder)
-      (readValue, writeValue) = splitAt (fromIntegral (dimX * dimY)) wholeList
+convertGenericImage :: (Applicative f) => (a1 -> a2) -> HaskellAttributeData -> NE.NonEmpty a1 -> f (TangoValue (Image a2))
+convertGenericImage f (HaskellAttributeData {dimX, dimY}) data' =
+  let wholeList = f <$> data'
+      (readValue, writeValue) = NE.splitAt (fromIntegral (dimX * dimY)) wholeList
    in pure
         ( TangoValue
             (Image readValue (fromIntegral dimX) (fromIntegral dimY))
-            (Image writeValue (fromIntegral dimX) (fromIntegral dimY))
+            (Just (Image writeValue (fromIntegral dimX) (fromIntegral dimY)))
         )
 
-convertGenericImage' :: (Applicative f) => HaskellAttributeData -> AtLeastTwo a1 -> f (TangoValue (Image a1))
-convertGenericImage' (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first second remainder) =
-  let wholeList = first : second : remainder
-      (readValue, writeValue) = splitAt (fromIntegral (dimX * dimY)) wholeList
+convertGenericImage' :: (Applicative f) => HaskellAttributeData -> NE.NonEmpty a1 -> f (TangoValue (Image a1))
+convertGenericImage' (HaskellAttributeData {dimX, dimY}) data' =
+  let wholeList = data'
+      (readValue, writeValue) = NE.splitAt (fromIntegral (dimX * dimY)) wholeList
    in pure
         ( TangoValue
             (Image readValue (fromIntegral dimX) (fromIntegral dimY))
-            (Image writeValue (fromIntegral dimX) (fromIntegral dimY))
+            (Just (Image writeValue (fromIntegral dimX) (fromIntegral dimY)))
         )
 
 -- | Represents an attribute's value, with read and write part, for different data types. Fields for quality etc. are currently missing
 data TangoValue a = TangoValue
   { -- | Read part of the attribute's value
     tangoValueRead :: a,
-    -- | Write part of the attribute's value
-    tangoValueWrite :: a
+    -- | Write part of the attribute's value; this can be missing!
+    tangoValueWrite :: Maybe a
   }
   deriving (Show)
 
@@ -1030,8 +1031,9 @@ readStringAttribute = readAttributeSimple extract convert
   where
     extract (HaskellAttributeDataStringArray a) = Just a
     extract _ = Nothing
-    convert _ (AtLeastTwo read write []) = TangoValue <$> peekCStringText read <*> peekCStringText write
-    convert _ _ = error "expected a read and a write value for attribute, got more elements"
+    convert _ (read NE.:| [write]) = TangoValue <$> peekCStringText read <*> (Just <$> peekCStringText write)
+    convert _ (read NE.:| []) = TangoValue <$> peekCStringText read <*> pure Nothing
+    convert _ _ = error "expected a read and an optional write value for attribute, got something else"
 
 -- | Read a string spectrum (array/list) attribute and decode it into a text
 readStringSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Text])
@@ -1039,10 +1041,10 @@ readStringSpectrumAttribute = readAttributeSimple extract convert
   where
     extract (HaskellAttributeDataStringArray a) = Just a
     extract _ = Nothing
-    convert (HaskellAttributeData {dimX}) (AtLeastTwo first second remainder) = do
-      wholeList <- traverse peekCStringText (first : second : remainder)
-      let (readValue, writeValue) = splitAt (fromIntegral dimX) wholeList
-      pure (TangoValue readValue writeValue)
+    convert (HaskellAttributeData {dimX}) data' = do
+      wholeList <- traverse peekCStringText data'
+      let (readValue, writeValue) = NE.splitAt (fromIntegral dimX) wholeList
+      pure (TangoValue readValue (Just writeValue))
 
 -- | Read a string image attribute and decode it into a text
 readStringImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Text))
@@ -1050,13 +1052,13 @@ readStringImageAttribute = readAttributeSimple extract convert
   where
     extract (HaskellAttributeDataStringArray a) = Just a
     extract _ = Nothing
-    convert (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first second remainder) = do
-      wholeList <- traverse peekCStringText (first : second : remainder)
-      let (readValue, writeValue) = splitAt (fromIntegral (dimX * dimY)) wholeList
+    convert (HaskellAttributeData {dimX, dimY}) data' = do
+      wholeList <- traverse peekCStringText data'
+      let (readValue, writeValue) = NE.splitAt (fromIntegral (dimX * dimY)) wholeList
       pure
         ( TangoValue
             (Image readValue (fromIntegral dimX) (fromIntegral dimY))
-            (Image writeValue (fromIntegral dimX) (fromIntegral dimY))
+            (Just (Image writeValue (fromIntegral dimX) (fromIntegral dimY)))
         )
 
 extractShort :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CShort)
