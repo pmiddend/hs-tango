@@ -1,6 +1,6 @@
 cabal-version:      3.6
 name:               hs-tango
-version:            2.0.0
+version:            2.0.1
 synopsis:           Bindings to the Tango Controls system
 description:
   Haskell bindings for Tango, part of the Tango Distributed Control System toolkit. Some general notes about this project:

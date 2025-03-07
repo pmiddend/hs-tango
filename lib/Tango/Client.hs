@@ -901,14 +901,15 @@ readAttributeSimple extractValue convertValue proxy attributeName = withExtracte
     (first : rest) -> convertValue attributeData (first NE.:| rest)
     _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a non-empty value array, but got " <> show arrayElements
 
-readAttributeSimple' ::
+-- | Extracts values from an attribute data, having the possibility to convert them with side-effects
+readAttributeWithIOConversion ::
   (MonadIO m, Show a) =>
   (HaskellTangoAttributeData -> IO (Maybe [a])) ->
   (HaskellAttributeData -> NE.NonEmpty a -> m b) ->
   DeviceProxy ->
   AttributeName ->
   m b
-readAttributeSimple' extractValue convertValue proxy attributeName = do
+readAttributeWithIOConversion extractValue convertValue proxy attributeName = do
   (attributeData, tangoArray) <- readAttributeGeneral (\d -> ((d,) <$>) <$> extractValue (tangoAttributeData d)) proxy attributeName
   case tangoArray of
     (first : rest) -> convertValue attributeData (first NE.:| rest)
@@ -972,7 +973,7 @@ data Image a = Image
 
 -- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally.
 readIntegralAttribute :: forall m i. (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
-readIntegralAttribute = readAttributeSimple' extractIntegral (convertGenericScalar id)
+readIntegralAttribute = readAttributeWithIOConversion extractIntegral (convertGenericScalar id)
 
 extractIntegral :: (Integral i, MonadUnliftIO m) => HaskellTangoAttributeData -> m (Maybe [i])
 extractIntegral (HaskellAttributeDataLongArray a) = do
@@ -997,11 +998,11 @@ extractIntegral _ = pure Nothing
 
 -- | Read a spectrum attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally.
 readIntegralSpectrumAttribute :: (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
-readIntegralSpectrumAttribute = readAttributeSimple' extractIntegral convertGenericSpectrum'
+readIntegralSpectrumAttribute = readAttributeWithIOConversion extractIntegral convertGenericSpectrum'
 
 -- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally.
 readIntegralImageAttribute :: (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
-readIntegralImageAttribute = readAttributeSimple' extractIntegral convertGenericImage'
+readIntegralImageAttribute = readAttributeWithIOConversion extractIntegral convertGenericImage'
 
 extractReal :: (Fractional i, MonadUnliftIO m) => HaskellTangoAttributeData -> m (Maybe [i])
 extractReal (HaskellAttributeDataDoubleArray a) = do
@@ -1014,15 +1015,15 @@ extractReal _ = pure Nothing
 
 -- | Read an attribute irrespective of the concrete real type. This just uses 'realToFrac' internally.
 readRealAttribute :: forall m i. (MonadUnliftIO m, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
-readRealAttribute = readAttributeSimple' extractReal (convertGenericScalar id)
+readRealAttribute = readAttributeWithIOConversion extractReal (convertGenericScalar id)
 
 -- | Read a spectrum attribute irrespective of the concrete real element type. This just uses 'realToFrac' internally.
 readRealSpectrumAttribute :: (MonadUnliftIO m, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
-readRealSpectrumAttribute = readAttributeSimple' extractReal convertGenericSpectrum'
+readRealSpectrumAttribute = readAttributeWithIOConversion extractReal convertGenericSpectrum'
 
 -- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'realToFrac' internally.
 readRealImageAttribute :: (MonadUnliftIO m, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
-readRealImageAttribute = readAttributeSimple' extractReal convertGenericImage'
+readRealImageAttribute = readAttributeWithIOConversion extractReal convertGenericImage'
 
 extractBool :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CBool)
 extractBool (HaskellAttributeDataBoolArray a) = Just a
